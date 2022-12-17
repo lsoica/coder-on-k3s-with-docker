@@ -31,6 +31,18 @@ variable "namespace" {
   description = "The namespace to create workspaces in (must exist prior to creating workspaces)"
 }
 
+variable "repository" {
+  type        = string
+  description = "Name of the repository to clone"
+  default = ""
+}
+
+variable "branch" {
+  type        = string
+  description = "Branch of the repository to clone"
+  default = ""
+}
+
 variable "home_disk_size" {
   type        = number
   description = "How large would you like your home volume to be (in GB)?"
@@ -48,27 +60,17 @@ provider "kubernetes" {
 
 data "coder_workspace" "me" {}
 
+data "template_file" "startup_script" {
+  template = "${file("./startup.sh")}"
+  vars = {
+    repository = "${var.repository}"
+    branch = "${var.branch}"
+  }
+}
 resource "coder_agent" "main" {
   os             = "linux"
   arch           = "amd64"
-  startup_script = <<EOT
-    #!/bin/bash
-
-    # home folder can be empty, so copying default bash settings
-    if [ ! -f ~/.profile ]; then
-      cp /etc/skel/.profile $HOME
-    fi
-    if [ ! -f ~/.bashrc ]; then
-      cp /etc/skel/.bashrc $HOME
-    fi
-
-    # update certificates
-    sudo update-ca-certificates
-
-    # install and start code-server
-    curl -fsSL https://code-server.dev/install.sh | sh  | tee code-server-install.log
-    code-server --auth none --port 13337 | tee code-server-install.log &
-  EOT
+  startup_script = "${data.template_file.startup_script.rendered}"
 }
 
 # code-server
@@ -111,6 +113,7 @@ resource "kubernetes_pod" "main" {
     namespace = var.namespace
   }
   spec {
+    service_account_name = "coder"
     security_context {
       run_as_user = "1000"
       fs_group    = "1000"
