@@ -21,3 +21,10 @@ spec:
       hostPath: 
           path: /var/run 
 ```
+
+# Open points
+ - Delete button only works when ctrl+click
+ - User variables: e.g. docker registry auth
+ - custom namespace per workspace with limited RBAC
+ - CA cert: cant use the mount as the startup script kicks in first???
+ - git clone: not working
