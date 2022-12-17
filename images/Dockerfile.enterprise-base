@@ -21,3 +21,7 @@ RUN sudo curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.0
 RUN sudo curl -LO https://github.com/coder/coder/releases/download/v0.13.3/coder_0.13.3_linux_amd64.tar.gz && \
     sudo tar -xzvf coder_0.13.3_linux_amd64.tar.gz && \
     sudo mv coder /usr/local/bin/
+
+COPY ca.crt /usr/local/share/ca-certificates/coder-root-ca.crt
+
+RUN sudo update-ca-certificates

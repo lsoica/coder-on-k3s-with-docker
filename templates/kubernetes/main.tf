@@ -62,6 +62,9 @@ resource "coder_agent" "main" {
       cp /etc/skel/.bashrc $HOME
     fi
 
+    # update certificates
+    sudo update-ca-certificates
+
     # install and start code-server
     curl -fsSL https://code-server.dev/install.sh | sh  | tee code-server-install.log
     code-server --auth none --port 13337 | tee code-server-install.log &
@@ -108,10 +111,17 @@ resource "kubernetes_pod" "main" {
     namespace = var.namespace
   }
   spec {
+    security_context {
+      run_as_user = "1000"
+      fs_group    = "1000"
+    }    
     container {
       name    = "dev"
-      image   = "codercom/enterprise-base:ubuntu"
+      image   = "laurentiusoica/coder:0.0.3"
       command = ["sh", "-c", coder_agent.main.init_script]
+      security_context {
+        run_as_user = "1000"
+      }      
       env {
         name  = "CODER_AGENT_TOKEN"
         value = coder_agent.main.token
@@ -121,9 +131,15 @@ resource "kubernetes_pod" "main" {
         name       = "home"
         read_only  = false
       }
+      volume_mount {
+        mount_path = "/var/run"
+        name       = "docker-sock"
+      }
       # volume_mount {
-      #   mount_path = "/var/run"
-      #   name       = "docker-sock"
+      #   mount_path = "/usr/local/share/ca-certificates/coder-root-ca.crt"
+      #   sub_path   = "tls.crt"
+      #   name       = "cacert"
+      #   read_only   = false
       # }
     }
 
@@ -134,10 +150,16 @@ resource "kubernetes_pod" "main" {
         read_only  = false
       }
     }
+    volume {
+      name = "docker-sock"
+      host_path {
+        path = "/var/run"
+      }
+    }
     # volume {
-    #   name = "docker-sock"
-    #   host_path {
-    #     path = "/var/run"
+    #   name = "cacert"
+    #   secret {
+    #     secret_name = "cacert"
     #   }
     # }
   }
