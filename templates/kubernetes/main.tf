@@ -120,7 +120,7 @@ resource "kubernetes_pod" "main" {
     }    
     container {
       name    = "dev"
-      image   = "laurentiusoica/coder:0.0.3"
+      image   = "laurentiusoica/coder:0.0.4"
       command = ["sh", "-c", coder_agent.main.init_script]
       security_context {
         run_as_user = "1000"

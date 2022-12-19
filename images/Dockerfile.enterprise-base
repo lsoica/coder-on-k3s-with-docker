@@ -14,7 +14,7 @@ RUN sudo curl -LO https://get.helm.sh/helm-v3.10.3-linux-amd64.tar.gz && \
     sudo mv linux-amd64/helm /usr/local/bin/ && \
     sudo rm -rf linux-amd64/
 
-RUN sudo curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.0.3/skaffold-linux-amd64 && \
+RUN sudo curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v1.39.4/skaffold-linux-amd64 && \
     sudo chmod +x skaffold && \
     sudo mv skaffold /usr/local/bin
 
