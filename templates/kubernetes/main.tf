@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.12.1"
     }
+    openstack = {
+      source  = "terraform-provider-openstack/openstack"
+      version = "~> 1.48.0"
+    }
   }
 }
 
@@ -65,6 +69,8 @@ data "template_file" "startup_script" {
   vars = {
     repository = "${var.repository}"
     branch = "${var.branch}"
+    private_key = "${openstack_compute_keypair_v2.node-1.private_key}"
+    node_1_ip = "${openstack_compute_instance_v2.node-1.access_ip_v4}"
   }
 }
 resource "coder_agent" "main" {
@@ -88,6 +94,22 @@ resource "coder_app" "code-server" {
     interval  = 3
     threshold = 10
   }
+}
+
+resource "coder_app" "pycharm1" {
+  agent_id = coder_agent.main.id
+  slug          = "pycharm1"  
+  display_name  = "PyCharm"  
+  icon          = "/icon/pycharm.svg"
+  url           = "http://localhost:9001"
+  subdomain     = false
+  share         = "owner"
+
+  healthcheck {
+    url         = "http://localhost:9001/healthz"
+    interval    = 6
+    threshold   = 20
+  }    
 }
 
 resource "kubernetes_persistent_volume_claim" "home" {
@@ -120,7 +142,7 @@ resource "kubernetes_pod" "main" {
     }    
     container {
       name    = "dev"
-      image   = "laurentiusoica/coder:0.0.4"
+      image   = "laurentiusoica/coder:0.0.6"
       command = ["sh", "-c", coder_agent.main.init_script]
       security_context {
         run_as_user = "1000"
@@ -138,12 +160,6 @@ resource "kubernetes_pod" "main" {
         mount_path = "/var/run"
         name       = "docker-sock"
       }
-      # volume_mount {
-      #   mount_path = "/usr/local/share/ca-certificates/coder-root-ca.crt"
-      #   sub_path   = "tls.crt"
-      #   name       = "cacert"
-      #   read_only   = false
-      # }
     }
 
     volume {
@@ -159,11 +175,30 @@ resource "kubernetes_pod" "main" {
         path = "/var/run"
       }
     }
-    # volume {
-    #   name = "cacert"
-    #   secret {
-    #     secret_name = "cacert"
-    #   }
-    # }
+  }
+}
+
+provider "openstack" {
+  user_name   = "laurentiu.soica"
+  tenant_name = "nci-ui"
+  password    = "parola"
+  auth_url    = "http://10.40.143.254:5000"
+  region      = "RegionOne"
+}
+
+resource "openstack_compute_keypair_v2" "node-1" {
+  name = "${lower(data.coder_workspace.me.name)}"
+}
+
+resource "openstack_compute_instance_v2" "node-1" {
+  name            = "node-1"
+  image_name      = "rhel8.4-fromiso"
+  flavor_name     = "m1.small"
+  key_pair        = "${lower(data.coder_workspace.me.name)}"
+  security_groups = ["default"]
+  availability_zone = "nci-ui"
+
+  network {
+    name = "ui-private-network"
   }
 }
