@@ -24,6 +24,5 @@ spec:
 
 # Open points
  - User variables: e.g. docker registry auth
- - custom namespace per workspace with limited RBAC
  - CA cert: cant use the mount as the startup script kicks in first???
  - git clone: not working

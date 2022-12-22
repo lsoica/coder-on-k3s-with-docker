@@ -6,7 +6,7 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.12.1"
+      version = "~> 2.16.1"
     }
     openstack = {
       source  = "terraform-provider-openstack/openstack"
@@ -29,11 +29,6 @@ variable "use_kubeconfig" {
   EOF
 }
 
-variable "namespace" {
-  type        = string
-  sensitive   = true
-  description = "The namespace to create workspaces in (must exist prior to creating workspaces)"
-}
 
 variable "repository" {
   type        = string
@@ -71,6 +66,7 @@ data "template_file" "startup_script" {
     branch = "${var.branch}"
     private_key = "${openstack_compute_keypair_v2.node-1.private_key}"
     node_1_ip = "${openstack_compute_instance_v2.node-1.access_ip_v4}"
+    namespace = "${lower(data.coder_workspace.me.name)}"
   }
 }
 resource "coder_agent" "main" {
@@ -96,26 +92,116 @@ resource "coder_app" "code-server" {
   }
 }
 
-resource "coder_app" "pycharm1" {
-  agent_id = coder_agent.main.id
-  slug          = "pycharm1"  
-  display_name  = "PyCharm"  
-  icon          = "/icon/pycharm.svg"
-  url           = "http://localhost:9001"
-  subdomain     = false
-  share         = "owner"
+# resource "coder_app" "pycharm1" {
+#   agent_id = coder_agent.main.id
+#   slug          = "pycharm1"  
+#   display_name  = "PyCharm"  
+#   icon          = "/icon/pycharm.svg"
+#   url           = "http://localhost:9001"
+#   subdomain     = false
+#   share         = "owner"
 
-  healthcheck {
-    url         = "http://localhost:9001/healthz"
-    interval    = 6
-    threshold   = 20
-  }    
+#   healthcheck {
+#     url         = "http://localhost:9001/healthz"
+#     interval    = 6
+#     threshold   = 20
+#   }    
+# }
+
+resource "kubernetes_namespace" "home" {
+  metadata {
+    name = "${lower(data.coder_workspace.me.name)}"
+  }
+}
+
+resource "kubernetes_default_service_account" "coder" {
+  metadata {
+    namespace = "${lower(data.coder_workspace.me.name)}"
+  }
+  automount_service_account_token = false
+}
+
+resource "kubernetes_secret_v1" "coder" {
+  metadata {
+    namespace = "${lower(data.coder_workspace.me.name)}"
+    name = "default"
+    annotations = {
+      "kubernetes.io/service-account.name"      = "default"
+      "kubernetes.io/service-account.namespace" = "${lower(data.coder_workspace.me.name)}"
+    }
+  }
+  type = "kubernetes.io/service-account-token"
+}
+
+resource "kubernetes_cluster_role" "coder" {
+
+  metadata {
+    name        = "${lower(data.coder_workspace.me.name)}"
+  }
+
+  rule {
+    api_groups = ["*"]
+    resources  = ["*"]
+    verbs      = ["get", "list", "watch"]
+  }
+  rule {
+    api_groups = ["*"]
+    resources  = ["persistentvolumes", "namespaces", "grafanadashboards", "clusterroles", "clusterrolebindings", "logstashpipelines"]
+    verbs      = ["*"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding" "coder" {
+  metadata {
+    name      = "${lower(data.coder_workspace.me.name)}"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = "${lower(data.coder_workspace.me.name)}"
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = "default"
+    namespace = "${lower(data.coder_workspace.me.name)}"
+  }
+}
+
+resource "kubernetes_role" "coder" {
+
+  metadata {
+    name        = "${lower(data.coder_workspace.me.name)}"
+    namespace   = "${lower(data.coder_workspace.me.name)}"
+  }
+
+  rule {
+    api_groups = ["*"]
+    resources  = ["*"]
+    verbs      = ["*"]
+  }
+}
+
+resource "kubernetes_role_binding" "coder" {
+  metadata {
+    name      = "${lower(data.coder_workspace.me.name)}"
+    namespace  = "${lower(data.coder_workspace.me.name)}"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = "${lower(data.coder_workspace.me.name)}"
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = "default"
+    namespace = "${lower(data.coder_workspace.me.name)}"
+  }
 }
 
 resource "kubernetes_persistent_volume_claim" "home" {
   metadata {
     name      = "coder-${lower(data.coder_workspace.me.owner)}-${lower(data.coder_workspace.me.name)}-home"
-    namespace = var.namespace
+    namespace = "${lower(data.coder_workspace.me.name)}"
   }
   wait_until_bound = false
   spec {
@@ -132,17 +218,16 @@ resource "kubernetes_pod" "main" {
   count = data.coder_workspace.me.start_count
   metadata {
     name      = "coder-${lower(data.coder_workspace.me.owner)}-${lower(data.coder_workspace.me.name)}"
-    namespace = var.namespace
+    namespace = "${lower(data.coder_workspace.me.name)}"
   }
   spec {
-    service_account_name = "coder"
     security_context {
       run_as_user = "1000"
       fs_group    = "1000"
     }    
     container {
       name    = "dev"
-      image   = "laurentiusoica/coder:0.0.6"
+      image   = "laurentiusoica/coder:0.0.7"
       command = ["sh", "-c", coder_agent.main.init_script]
       security_context {
         run_as_user = "1000"
